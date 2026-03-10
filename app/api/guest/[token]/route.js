@@ -2,6 +2,8 @@ import { getServiceClient } from '@/lib/supabase-server';
 import { NextResponse } from 'next/server';
 
 // Public endpoint — returns booking info by token (no auth required)
+export const dynamic = 'force-dynamic';
+
 export async function GET(req, { params }) {
   const db = getServiceClient();
   const { data, error } = await db

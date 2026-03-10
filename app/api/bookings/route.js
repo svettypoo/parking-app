@@ -9,7 +9,7 @@ export async function GET(req) {
 
   let query = db
     .from('unit_bookings')
-    .select('*, parking_units(unit_number, floor)')
+    .select('*, parking_units(unit_number, floor), vehicle_registrations(plate, make, model, color)')
     .order('check_in');
 
   if (unit_id) query = query.eq('unit_id', unit_id);

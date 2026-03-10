@@ -73,11 +73,29 @@ export default function BookingsPage() {
   };
 
   const filtered = bookings.filter(b => {
-    const q = search.toLowerCase();
-    const match = !q || [b.guest_name, b.guest_email, b.booking_ref, b.parking_units?.unit_number].some(v => v?.toLowerCase().includes(q));
+    const q = search.toLowerCase().replace(/\s/g, '');
+    const plates = (b.vehicle_registrations || []).map(v => v.plate?.replace(/\s/g, '').toLowerCase());
+    const match = !q || [
+      b.guest_name,
+      b.guest_email,
+      b.guest_phone,
+      b.booking_ref,
+      b.parking_units?.unit_number,
+      ...plates,
+    ].some(v => v?.toLowerCase().replace(/\s/g, '').includes(q));
     const typeMatch = filter === 'all' || b.booking_type === filter;
     return match && typeMatch;
   });
+
+  // What field did the search match? (for hint display)
+  const getMatchHint = (b) => {
+    if (!search) return null;
+    const q = search.toLowerCase().replace(/\s/g, '');
+    if (b.guest_phone?.toLowerCase().includes(q)) return b.guest_phone;
+    const plate = (b.vehicle_registrations || []).find(v => v.plate?.replace(/\s/g,'').toLowerCase().includes(q));
+    if (plate) return `🚗 ${plate.plate}`;
+    return null;
+  };
 
   return (
     <div className="space-y-4">
@@ -134,6 +152,7 @@ export default function BookingsPage() {
                       <div className="font-medium text-slate-900">{b.guest_name || '—'}</div>
                       <div className="text-slate-400 text-xs">{b.guest_email}</div>
                       {b.booking_ref && <div className="text-slate-400 text-xs font-mono">{b.booking_ref}</div>}
+                      {getMatchHint(b) && <div className="text-blue-500 text-xs font-medium mt-0.5">{getMatchHint(b)}</div>}
                     </td>
                     <td className="px-4 py-3 font-medium">{b.parking_units?.unit_number || '—'}</td>
                     <td className="px-4 py-3 text-slate-600">
