@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { format, eachDayOfInterval, startOfYear, endOfYear, parseISO, isSameDay } from 'date-fns';
-import { ChevronLeft, ChevronRight, Car } from 'lucide-react';
+import { format, eachDayOfInterval, startOfYear, endOfYear } from 'date-fns';
+import { ChevronLeft, ChevronRight, Car, Building2 } from 'lucide-react';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -94,7 +94,7 @@ export default function OccupancyGrid() {
   if (units.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-4">
-        <Building className="w-12 h-12 text-slate-300" />
+        <Building2 className="w-12 h-12 text-slate-300" />
         <p className="text-slate-500 text-lg">No units configured yet.</p>
         <a href="/admin/units" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">Add Units</a>
       </div>
