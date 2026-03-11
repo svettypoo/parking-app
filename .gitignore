@@ -39,3 +39,4 @@ next-env.d.ts
 detections.db
 frames/
 uploads/
+lpr-local/node_modules/
