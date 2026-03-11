@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LPR Analysis Report</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+    a { color: #60a5fa; }
+
+    .header { background: linear-gradient(135deg, #1e40af, #0891b2); padding: 20px 28px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .header-text h1 { font-size: 22px; font-weight: 700; color: #fff; }
+    .header-text p { font-size: 13px; color: #bfdbfe; margin-top: 2px; }
+    .header-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; border: none; cursor: pointer; transition: all .15s; text-decoration: none; }
+    .btn-light { background: rgba(255,255,255,0.15); color: #fff; }
+    .btn-light:hover { background: rgba(255,255,255,0.25); }
+    .btn-green { background: #059669; color: #fff; }
+    .btn-green:hover { background: #10b981; }
+    .btn-blue { background: #1d4ed8; color: #fff; }
+    .btn-blue:hover { background: #2563eb; }
+
+    .container { max-width: 1200px; margin: 0 auto; padding: 28px 16px; }
+
+    /* Status banner */
+    .processing-banner { background: #1e3a5f; border: 1px solid #1e40af; border-radius: 12px; padding: 20px; margin-bottom: 24px; display: flex; align-items: center; gap: 16px; }
+    .spinner { width: 24px; height: 24px; border: 3px solid #334155; border-top-color: #3b82f6; border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .progress-bar { flex: 1; height: 8px; background: #334155; border-radius: 99px; overflow: hidden; }
+    .progress-fill { height: 100%; background: linear-gradient(90deg, #1d4ed8, #06b6d4); border-radius: 99px; transition: width .5s ease; }
+
+    /* Stats grid */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 28px; }
+    .stat-card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 18px; text-align: center; }
+    .stat-card .val { font-size: 32px; font-weight: 800; margin-bottom: 4px; }
+    .stat-card .lbl { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: .5px; }
+    .agree { color: #34d399; } .disagree { color: #f87171; } .neutral { color: #60a5fa; } .warn { color: #fbbf24; }
+
+    /* Plates found */
+    .section { margin-bottom: 28px; }
+    .section-title { font-size: 16px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid #1e293b; display: flex; align-items: center; gap: 8px; }
+    .plates-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+    .plate-card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 16px; }
+    .plate-number { font-family: 'Courier New', monospace; font-size: 26px; font-weight: 900; letter-spacing: 3px; color: #1e293b; background: #fff; padding: 10px 16px; border-radius: 8px; text-align: center; margin-bottom: 12px; }
+    .plate-meta { font-size: 12px; color: #64748b; display: flex; flex-direction: column; gap: 4px; }
+    .plate-meta .row { display: flex; justify-content: space-between; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 700; }
+    .badge-both { background: #064e3b; color: #34d399; }
+    .badge-tesseract { background: #1e3a5f; color: #93c5fd; }
+    .badge-claude { background: #3b0764; color: #c4b5fd; }
+
+    /* Frame table */
+    .table-wrap { background: #1e293b; border: 1px solid #334155; border-radius: 12px; overflow: hidden; }
+    .table-scroll { overflow-x: auto; max-height: 500px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th { background: #0f172a; padding: 10px 14px; text-align: left; color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: .4px; position: sticky; top: 0; z-index: 1; white-space: nowrap; }
+    tbody tr { border-top: 1px solid #1e293b; }
+    tbody tr:hover { background: #243447; }
+    td { padding: 8px 14px; color: #cbd5e1; vertical-align: middle; }
+    td.plate-mono { font-family: monospace; font-size: 14px; font-weight: 700; letter-spacing: 1px; }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+    .dot-green { background: #10b981; } .dot-red { background: #ef4444; } .dot-yellow { background: #f59e0b; } .dot-gray { background: #475569; }
+    .conf { font-size: 11px; color: #475569; }
+
+    /* Comparison col */
+    .match-yes { color: #34d399; font-weight: 700; }
+    .match-no { color: #f87171; font-weight: 700; }
+    .match-na { color: #475569; }
+
+    /* Filters */
+    .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+    .filter-btn { padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid #334155; background: #1e293b; color: #94a3b8; transition: all .15s; }
+    .filter-btn.active { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
+
+    .empty { text-align: center; padding: 40px; color: #475569; }
+    .loading { text-align: center; padding: 60px; }
+    .loading .spinner { margin: 0 auto 16px; width: 32px; height: 32px; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div style="font-size:28px">📊</div>
+  <div class="header-text">
+    <h1 id="header-title">LPR Analysis Report</h1>
+    <p id="header-sub">Loading...</p>
+  </div>
+  <div class="header-actions">
+    <a class="btn btn-light" href="/">← Back to Detector</a>
+    <a class="btn btn-green" id="csv-btn" href="#" download>⬇ Download CSV</a>
+    <a class="btn btn-blue" id="db-btn" href="#" download>🗄 Download DB</a>
+  </div>
+</div>
+
+<div class="container">
+  <div id="processing-banner" class="processing-banner" style="display:none">
+    <div class="spinner"></div>
+    <div style="flex:1">
+      <div style="font-size:14px;font-weight:600;margin-bottom:8px;" id="proc-status">Processing frames...</div>
+      <div class="progress-bar"><div class="progress-fill" id="proc-bar" style="width:0%"></div></div>
+    </div>
+    <div style="font-size:13px;color:#94a3b8;" id="proc-pct">0%</div>
+  </div>
+
+  <div id="main-content" class="loading">
+    <div class="spinner"></div>
+    <p style="color:#64748b">Loading report...</p>
+  </div>
+</div>
+
+<script>
+  const sessionId = location.pathname.split('/').pop();
+  let pollInterval = null;
+  let filter = 'all';
+
+  document.getElementById('csv-btn').href = `/report/${sessionId}/csv`;
+  document.getElementById('db-btn').href = `/report/${sessionId}/db`;
+
+  async function loadReport() {
+    const r = await fetch(`/report/${sessionId}`).then(r => r.json());
+    if (r.error) { document.getElementById('main-content').innerHTML = `<div class="empty">Error: ${r.error}</div>`; return; }
+
+    const { session, stats, unique_plates, frames } = r;
+
+    document.getElementById('header-title').textContent = `LPR Report — ${session.original_name || session.filename}`;
+    document.getElementById('header-sub').textContent = `${session.status} · ${frames.length} frames · ${unique_plates.length} unique plate(s) · ${session.duration_sec ? session.duration_sec.toFixed(1) + 's video' : ''}`;
+
+    if (session.status === 'processing') {
+      document.getElementById('processing-banner').style.display = '';
+      if (!pollInterval) pollInterval = setInterval(pollStatus, 2000);
+    } else {
+      document.getElementById('processing-banner').style.display = 'none';
+      if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+    }
+
+    const agreementRate = stats.agreement_rate_pct;
+    const main = document.getElementById('main-content');
+    main.className = '';
+    main.innerHTML = `
+      <!-- Stats -->
+      <div class="stats-grid">
+        <div class="stat-card"><div class="val neutral">${frames.length}</div><div class="lbl">Frames Analyzed</div></div>
+        <div class="stat-card"><div class="val neutral">${unique_plates.length}</div><div class="lbl">Unique Plates</div></div>
+        <div class="stat-card"><div class="val neutral">${stats.tesseract_detected}</div><div class="lbl">Tesseract Detected</div></div>
+        <div class="stat-card"><div class="val neutral">${stats.claude_detected}</div><div class="lbl">Claude Detected</div></div>
+        <div class="stat-card"><div class="val agree">${stats.both_agree}</div><div class="lbl">Both Agree ✅</div></div>
+        <div class="stat-card"><div class="val disagree">${stats.disagreements}</div><div class="lbl">Disagreements ⚠</div></div>
+        <div class="stat-card"><div class="val ${agreementRate >= 80 ? 'agree' : agreementRate >= 50 ? 'warn' : 'disagree'}">${agreementRate != null ? agreementRate + '%' : '—'}</div><div class="lbl">Agreement Rate</div></div>
+        <div class="stat-card"><div class="val neutral">${stats.claude_calls_made}</div><div class="lbl">Claude Calls</div></div>
+      </div>
+
+      <!-- Unique plates -->
+      <div class="section">
+        <div class="section-title">🚗 Unique Plates Found</div>
+        ${unique_plates.length === 0 ? '<div class="empty">No plates detected in this video.</div>' : `
+        <div class="plates-grid">
+          ${unique_plates.map(p => `
+            <div class="plate-card">
+              <div class="plate-number">${p.plate}</div>
+              <div class="plate-meta">
+                ${p.make || p.model || p.color ? `<div class="row"><span>${[p.color, p.make, p.model].filter(Boolean).join(' ')}</span></div>` : ''}
+                <div class="row"><span>Seen ${p.seen_count}× (${p.first_seen_sec.toFixed(1)}s–${p.last_seen_sec.toFixed(1)}s)</span></div>
+                <div class="row">
+                  <span class="badge badge-${p.source}">${p.source === 'both' ? '✅ Both engines' : p.source === 'claude' ? '🤖 Claude only' : '🔍 Tesseract only'}</span>
+                  <span style="color:#475569">${p.best_tesseract_confidence ? 'OCR: ' + Math.round(p.best_tesseract_confidence * 100) + '%' : ''}</span>
+                </div>
+              </div>
+            </div>`).join('')}
+        </div>`}
+      </div>
+
+      <!-- Frame table -->
+      <div class="section">
+        <div class="section-title">🎞 Frame-by-Frame Analysis</div>
+        <div class="filters">
+          <button class="filter-btn ${filter === 'all' ? 'active' : ''}" onclick="setFilter('all',this)">All frames</button>
+          <button class="filter-btn ${filter === 'plates' ? 'active' : ''}" onclick="setFilter('plates',this)">Plates only</button>
+          <button class="filter-btn ${filter === 'match' ? 'active' : ''}" onclick="setFilter('match',this)">✅ Matching</button>
+          <button class="filter-btn ${filter === 'differ' ? 'active' : ''}" onclick="setFilter('differ',this)">⚠ Differ</button>
+          <button class="filter-btn ${filter === 'claudeonly' ? 'active' : ''}" onclick="setFilter('claudeonly',this)">Claude only</button>
+        </div>
+        <div class="table-wrap">
+          <div class="table-scroll">
+            <table id="frame-table">
+              <thead>
+                <tr>
+                  <th>#</th><th>Time</th>
+                  <th>🔍 Tesseract OCR</th><th>Conf</th>
+                  <th>🤖 Claude Vision</th><th>Conf</th>
+                  <th>Vehicle</th><th>Agreement</th><th>Consensus</th>
+                </tr>
+              </thead>
+              <tbody id="frame-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+
+    renderFrames(frames);
+  }
+
+  let allFrames = [];
+  function renderFrames(frames) {
+    allFrames = frames;
+    applyFilter();
+  }
+
+  function setFilter(f, btn) {
+    filter = f;
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    applyFilter();
+  }
+
+  function applyFilter() {
+    let rows = allFrames;
+    if (filter === 'plates') rows = rows.filter(f => f.consensus);
+    else if (filter === 'match') rows = rows.filter(f => f.agreement === 'match');
+    else if (filter === 'differ') rows = rows.filter(f => f.agreement === 'differ');
+    else if (filter === 'claudeonly') rows = rows.filter(f => f.claude && !f.tesseract?.plate);
+
+    const tbody = document.getElementById('frame-tbody');
+    if (!tbody) return;
+
+    if (rows.length === 0) { tbody.innerHTML = `<tr><td colspan="9" class="empty">No frames match this filter.</td></tr>`; return; }
+
+    tbody.innerHTML = rows.map(f => {
+      const tp = f.tesseract?.plate, cp = f.claude?.plate;
+      const dotClass = f.agreement === 'match' ? 'dot-green' : f.agreement === 'differ' ? 'dot-red' : tp || cp ? 'dot-yellow' : 'dot-gray';
+      const agreeHtml = f.agreement === 'match' ? '<span class="match-yes">✅ Match</span>' : f.agreement === 'differ' ? '<span class="match-no">⚠ Differ</span>' : '<span class="match-na">—</span>';
+      return `<tr>
+        <td style="color:#475569">${f.frame}</td>
+        <td style="color:#64748b">${f.time_sec.toFixed(2)}s</td>
+        <td class="plate-mono">${tp ? `<span class="dot ${dotClass}"></span>${tp}` : '<span style="color:#334155">—</span>'}</td>
+        <td class="conf">${tp ? Math.round((f.tesseract?.confidence || 0) * 100) + '%' : ''}</td>
+        <td class="plate-mono">${cp ? `<span class="dot dot-gray"></span>${cp}` : (f.claude ? '<span style="color:#334155">—</span>' : '<span style="color:#1e293b">not called</span>')}</td>
+        <td class="conf">${cp ? Math.round((f.claude?.confidence || 0) * 100) + '%' : ''}</td>
+        <td style="font-size:12px;color:#64748b">${f.claude ? [f.claude.color, f.claude.make, f.claude.model].filter(Boolean).join(' ') || '—' : ''}</td>
+        <td>${agreeHtml}</td>
+        <td class="plate-mono" style="color:#a5f3fc">${f.consensus || '—'}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  async function pollStatus() {
+    const r = await fetch(`/job/${sessionId}`).then(r => r.json()).catch(() => null);
+    if (!r) return;
+    const bar = document.getElementById('proc-bar');
+    const pct = document.getElementById('proc-pct');
+    const status = document.getElementById('proc-status');
+    if (bar) bar.style.width = r.progress_pct + '%';
+    if (pct) pct.textContent = r.progress_pct + '%';
+    if (status) {
+      const j = r.job;
+      if (j.status === 'extracting_frames') status.textContent = 'Extracting frames from video...';
+      else if (j.status === 'analyzing') status.textContent = `Analyzing frame ${j.progress}/${j.total} (${j.currentTimestamp}s)...`;
+      else if (j.status === 'complete') { status.textContent = 'Complete!'; setTimeout(loadReport, 500); }
+      else if (j.status === 'error') { status.textContent = `Error: ${j.error}`; clearInterval(pollInterval); }
+    }
+    if (r.status === 'complete') { clearInterval(pollInterval); pollInterval = null; setTimeout(loadReport, 500); }
+  }
+
+  loadReport();
+</script>
+</body>
+</html>

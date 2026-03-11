@@ -132,6 +132,7 @@
           <div class="tabs">
             <button class="tab active" onclick="switchTab('webcam', this)">📷 Webcam</button>
             <button class="tab" onclick="switchTab('upload', this)">📁 Upload</button>
+            <button class="tab" onclick="switchTab('video', this)">🎬 Video</button>
           </div>
 
           <!-- Webcam panel -->
@@ -163,6 +164,37 @@
             <img id="preview-img" src="" alt="Preview" />
             <div class="btn-group">
               <button class="btn btn-success" id="analyze-btn" onclick="analyzeUpload()" disabled>🔍 Analyze Plate</button>
+            </div>
+          </div>
+
+          <!-- Video panel -->
+          <div id="panel-video" style="display:none;">
+            <div class="drop-zone" id="video-drop-zone" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleVideoDrop(event)">
+              <input type="file" accept="video/*" onchange="handleVideoSelect(event)" />
+              <div class="icon">🎬</div>
+              <p>Drop a video here or <strong>click to browse</strong></p>
+              <p style="font-size:12px;margin-top:6px;">MP4, AVI, MOV, MKV — up to 500MB</p>
+            </div>
+            <div id="video-info" style="display:none;margin-top:12px;background:#0f172a;border-radius:10px;padding:12px;">
+              <div style="font-size:13px;color:#94a3b8;" id="video-name">—</div>
+              <div style="font-size:12px;color:#475569;margin-top:4px;">Both Tesseract OCR + Claude Vision will analyze every frame</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:10px;">
+              <label style="font-size:12px;color:#64748b;">Sample rate:</label>
+              <select id="fps-select" style="background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:5px 10px;border-radius:6px;font-size:12px;">
+                <option value="1">1 fps (faster)</option>
+                <option value="2" selected>2 fps (recommended)</option>
+                <option value="4">4 fps (thorough)</option>
+              </select>
+            </div>
+            <div class="btn-group">
+              <button class="btn btn-success" id="analyze-video-btn" onclick="analyzeVideo()" disabled>🎬 Analyze Video</button>
+            </div>
+            <div id="video-progress" style="display:none;margin-top:12px;">
+              <div style="font-size:13px;color:#94a3b8;margin-bottom:6px;" id="video-progress-text">Processing...</div>
+              <div style="height:6px;background:#334155;border-radius:99px;overflow:hidden;">
+                <div id="video-progress-bar" style="height:100%;background:linear-gradient(90deg,#1d4ed8,#06b6d4);border-radius:99px;width:0%;transition:width .5s ease;"></div>
+              </div>
             </div>
           </div>
 
@@ -233,6 +265,21 @@
     </div>
   </div>
 
+  <!-- Video Sessions -->
+  <div style="max-width:900px;margin:0 auto;padding:0 16px 32px;">
+    <div class="card">
+      <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;">
+        🎬 Video Analysis Sessions
+        <button class="btn btn-secondary btn-sm" onclick="loadSessions()">↻ Refresh</button>
+      </div>
+      <div class="card-body" style="padding:12px;">
+        <div id="sessions-list">
+          <div style="text-align:center;color:#475569;font-size:13px;padding:20px;">No video sessions yet. Upload a video to get started.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     let stream = null;
     let uploadedFile = null;
@@ -273,6 +320,96 @@
       btn.classList.add('active');
       document.getElementById('panel-webcam').style.display = tab === 'webcam' ? '' : 'none';
       document.getElementById('panel-upload').style.display = tab === 'upload' ? '' : 'none';
+      document.getElementById('panel-video').style.display = tab === 'video' ? '' : 'none';
+    }
+
+    // ── Video analysis ──────────────────────────────────────────────
+    let videoFile = null;
+    let videoPollInterval = null;
+
+    function handleVideoSelect(e) {
+      videoFile = e.target.files[0];
+      if (!videoFile) return;
+      document.getElementById('video-name').textContent = `📹 ${videoFile.name} (${(videoFile.size / 1024 / 1024).toFixed(1)} MB)`;
+      document.getElementById('video-info').style.display = '';
+      document.getElementById('analyze-video-btn').disabled = false;
+    }
+
+    function handleVideoDrop(e) {
+      e.preventDefault();
+      document.getElementById('video-drop-zone').classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file && file.type.startsWith('video/')) {
+        videoFile = file;
+        document.getElementById('video-name').textContent = `📹 ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
+        document.getElementById('video-info').style.display = '';
+        document.getElementById('analyze-video-btn').disabled = false;
+      }
+    }
+
+    async function analyzeVideo() {
+      if (!videoFile) return;
+      const fps = document.getElementById('fps-select').value;
+      const btn = document.getElementById('analyze-video-btn');
+      btn.disabled = true; btn.textContent = 'Uploading...';
+
+      const form = new FormData();
+      form.append('video', videoFile);
+
+      const r = await fetch(`/analyze-video?fps=${fps}`, { method: 'POST', body: form }).then(r => r.json());
+      btn.textContent = '🎬 Analyze Video';
+      btn.disabled = false;
+
+      if (r.error) { alert('Error: ' + r.error); return; }
+
+      document.getElementById('video-progress').style.display = '';
+      document.getElementById('video-progress-text').textContent = 'Processing... (this may take a few minutes)';
+      loadSessions();
+      startVideoPoll(r.session_id);
+    }
+
+    function startVideoPoll(sessionId) {
+      if (videoPollInterval) clearInterval(videoPollInterval);
+      videoPollInterval = setInterval(async () => {
+        const r = await fetch(`/job/${sessionId}`).then(r => r.json()).catch(() => null);
+        if (!r) return;
+        const bar = document.getElementById('video-progress-bar');
+        const text = document.getElementById('video-progress-text');
+        if (bar) bar.style.width = r.progress_pct + '%';
+        const j = r.job || {};
+        if (j.status === 'extracting_frames') text.textContent = 'Extracting frames from video...';
+        else if (j.status === 'analyzing') text.textContent = `Analyzing frame ${j.progress}/${j.total} at ${j.currentTimestamp}s...`;
+        else if (j.status === 'complete') {
+          text.textContent = `✅ Complete! Found ${j.plateCount || 0} unique plate(s).`;
+          clearInterval(videoPollInterval); videoPollInterval = null;
+          document.getElementById('video-progress-bar').style.width = '100%';
+          loadSessions();
+          // Open report in new tab after 1.5s
+          setTimeout(() => window.open(`/report-ui/${sessionId}`, '_blank'), 1500);
+        } else if (j.status === 'error') {
+          text.textContent = `❌ Error: ${j.error}`;
+          clearInterval(videoPollInterval); videoPollInterval = null;
+        }
+        loadSessions();
+      }, 2000);
+    }
+
+    async function loadSessions() {
+      const sessions = await fetch('/sessions').then(r => r.json()).catch(() => []);
+      const el = document.getElementById('sessions-list');
+      if (!sessions.length) { el.innerHTML = '<div style="text-align:center;color:#475569;font-size:13px;padding:20px;">No video sessions yet.</div>'; return; }
+      el.innerHTML = sessions.map(s => {
+        const statusColor = s.status === 'complete' ? '#34d399' : s.status === 'error' ? '#f87171' : '#fbbf24';
+        return `<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;background:#0f172a;border:1px solid #1e293b;margin-bottom:6px;">
+          <div style="width:8px;height:8px;border-radius:50%;background:${statusColor};flex-shrink:0;"></div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:600;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${s.original_name || s.filename}</div>
+            <div style="font-size:11px;color:#475569;margin-top:2px;">${s.status} · ${s.frame_count} frames · ${s.duration_sec ? s.duration_sec.toFixed(1) + 's' : ''} · ${s.notes || ''}</div>
+          </div>
+          ${s.status === 'complete' ? `<a href="/report-ui/${s.id}" target="_blank" style="padding:5px 12px;background:#1e40af;color:#fff;border-radius:7px;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;">View Report →</a>` : ''}
+          ${s.status === 'processing' ? `<button onclick="startVideoPoll(${s.id})" style="padding:5px 12px;background:#334155;color:#e2e8f0;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;">Track →</button>` : ''}
+        </div>`;
+      }).join('');
     }
 
     // Camera
@@ -382,14 +519,32 @@
     function showResult(res) {
       document.getElementById('result-content').style.display = '';
       const plateEl = document.getElementById('plate-text');
-      plateEl.textContent = res.plate || '— NO PLATE —';
 
-      const conf = Math.round((res.confidence || 0) * 100);
+      // New response format has tesseract/claude sub-objects; old format has flat fields
+      const consensus = res.consensus || res.plate || null;
+      const tConf = res.tesseract?.confidence || res.confidence || 0;
+      const cConf = res.claude?.confidence || 0;
+      const make = res.claude?.make || res.make || null;
+      const model = res.claude?.model || res.model || null;
+      const color = res.claude?.color || res.color || null;
+
+      plateEl.textContent = consensus || '— NO PLATE —';
+
+      const conf = Math.round(Math.max(tConf, cConf) * 100);
       document.getElementById('conf-val').textContent = `${conf}%`;
       document.getElementById('conf-bar').style.width = `${conf}%`;
-      document.getElementById('make-model').textContent = [res.make, res.model].filter(Boolean).join(' ') || '—';
-      document.getElementById('color-val').textContent = res.color || '—';
-      document.getElementById('notes-val').textContent = res.notes || '';
+      document.getElementById('make-model').textContent = [make, model].filter(Boolean).join(' ') || '—';
+      document.getElementById('color-val').textContent = color || '—';
+
+      // Show agreement if both engines ran
+      let notesText = '';
+      if (res.tesseract && res.claude) {
+        const agree = res.agreement;
+        notesText = `Tesseract: ${res.tesseract.plate || 'none'} (${Math.round(tConf*100)}%) · Claude: ${res.claude.plate || 'none'} (${Math.round(cConf*100)}%) · ${agree === true ? '✅ Both agree' : agree === false ? '⚠ Differ — used higher confidence' : '—'}`;
+      } else {
+        notesText = res.tesseract?.notes || res.notes || '';
+      }
+      document.getElementById('notes-val').textContent = notesText;
 
       // Status from parking result
       let statusClass = 'unknown', statusText = 'Not checked';
@@ -420,8 +575,8 @@
         return `<div class="history-item" onclick="showResult(${JSON.stringify(h).replace(/"/g, '&quot;')})">
           <div class="dot ${dotClass}"></div>
           <div style="flex:1">
-            <div class="history-plate">${h.plate || 'NO PLATE'}</div>
-            <div class="history-meta">${timeStr} · ${Math.round((h.confidence||0)*100)}% · ${h.model || ''}</div>
+            <div class="history-plate">${h.consensus || h.plate || 'NO PLATE'}</div>
+            <div class="history-meta">${timeStr} · ${h.agreement === true ? '✅ agree' : h.agreement === false ? '⚠ differ' : ''}</div>
           </div>
         </div>`;
       }).join('');
@@ -457,6 +612,7 @@
     }
 
     loadModels();
+    loadSessions();
   </script>
 </body>
 </html>
