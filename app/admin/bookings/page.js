@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
-import { Plus, Search, Copy, ExternalLink, CheckCircle, X, Car, User } from 'lucide-react';
+import { Plus, Search, Copy, ExternalLink, CheckCircle, X, Car, Bell } from 'lucide-react';
 
 const STATUS_COLORS = {
   confirmed: 'bg-emerald-100 text-emerald-700',
@@ -24,6 +24,8 @@ export default function BookingsPage() {
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [saving, setSaving] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
+  const [reminderSentId, setReminderSentId] = useState(null);
+  const [sendingReminderId, setSendingReminderId] = useState(null);
   const [year] = useState(new Date().getFullYear());
 
   const BLANK = { unit_id: '', guest_name: '', guest_email: '', guest_phone: '', check_in: '', check_out: '', booking_type: 'guest', booking_ref: '', notes: '', status: 'confirmed' };
@@ -70,6 +72,19 @@ export default function BookingsPage() {
     navigator.clipboard.writeText(url);
     setCopiedId(b.id);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const sendReminder = async (b) => {
+    if (!b.guest_email) { alert('This booking has no guest email.'); return; }
+    setSendingReminderId(b.id);
+    const res = await fetch('/api/reminders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ booking_id: b.id }),
+    }).then(r => r.json());
+    setSendingReminderId(null);
+    if (res.ok) { setReminderSentId(b.id); setTimeout(() => setReminderSentId(null), 3000); }
+    else alert('Failed to send reminder: ' + (res.error || 'unknown error'));
   };
 
   const filtered = bookings.filter(b => {
@@ -180,6 +195,11 @@ export default function BookingsPage() {
                               <ExternalLink className="w-4 h-4" />
                             </a>
                           </>
+                        )}
+                        {b.guest_email && (
+                          <button onClick={() => sendReminder(b)} title="Send parking reminder email" disabled={sendingReminderId === b.id} className={`p-1.5 rounded transition-colors ${reminderSentId === b.id ? 'text-emerald-500' : 'hover:bg-amber-50 text-amber-400 hover:text-amber-600'} disabled:opacity-40`}>
+                            {reminderSentId === b.id ? <CheckCircle className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+                          </button>
                         )}
                         <button onClick={() => deleteBooking(b.id)} className="p-1.5 rounded hover:bg-red-50 text-red-400 hover:text-red-600">
                           <X className="w-4 h-4" />
