@@ -1,0 +1,15 @@
+# Ignore everything by default, then whitelist source files
+*
+
+# Source code
+!app/
+!components/
+!lib/
+!public/
+!frames/
+!package.json
+!package-lock.json
+!next.config.mjs
+!jsconfig.json
+!postcss.config.mjs
+!tailwind.config.js
