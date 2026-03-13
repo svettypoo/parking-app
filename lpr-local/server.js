@@ -33,6 +33,28 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 ['uploads', 'frames'].forEach(d => { if (!fs.existsSync(d)) fs.mkdirSync(d); });
 
+// ─── Local AI (YOLO + EasyOCR via Python) ─────────────────────────────────────
+
+const LOCAL_LPR_SCRIPT = path.join(__dirname, 'local_lpr.py');
+
+function analyzeWithLocalAI(imagePath) {
+  return new Promise((resolve) => {
+    const absPath = path.resolve(imagePath).replace(/\\/g, '/');
+    exec(`python "${LOCAL_LPR_SCRIPT}" "${absPath}"`, { timeout: 60000 }, (err, stdout) => {
+      if (err || !stdout.trim()) {
+        return resolve({ plate: null, confidence: 0, make: null, color: null, notes: `LocalAI error: ${err ? err.message : 'no output'}` });
+      }
+      try {
+        const match = stdout.match(/\{[\s\S]*\}/);
+        if (match) return resolve(JSON.parse(match[0]));
+        resolve({ plate: null, confidence: 0, make: null, color: null, notes: 'LocalAI unparseable output' });
+      } catch (e) {
+        resolve({ plate: null, confidence: 0, make: null, color: null, notes: `LocalAI parse error: ${e.message}` });
+      }
+    });
+  });
+}
+
 // ─── Tesseract OCR ────────────────────────────────────────────────────────────
 
 function runTesseract(imagePath) {
@@ -187,28 +209,28 @@ async function processVideo(sessionId, videoPath, fps = 2) {
       jobs[sessionId].progress = i + 1;
       jobs[sessionId].currentTimestamp = timestampSec.toFixed(1);
 
-      // 1. Tesseract OCR
-      const tess = await analyzePlateOCR(framePath);
+      // 1. Local AI (YOLO vehicle detection + EasyOCR) — every frame
+      const localResult = await analyzeWithLocalAI(framePath);
+      const lp = localResult.plate || null;
+      const localConf = localResult.confidence || 0;
 
-      // 2. Claude — call if Tesseract found something OR it's every Nth frame
-      const callClaude = !!tess.plate || (i % CLAUDE_EVERY_N === 0);
+      // 2. Claude — call only if local AI found a vehicle OR every Nth frame
+      const callClaude = !!lp || localResult.vehicles_detected > 0 || (i % CLAUDE_EVERY_N === 0);
       let claudeResult = { plate: null, confidence: 0, make: null, model: null, color: null, notes: null };
       if (callClaude) {
         claudeResult = await analyzeWithClaude(framePath);
       }
 
-      // 3. Agreement analysis
-      const tp = tess.plate;
+      // 3. Agreement analysis (local AI vs Claude)
       const cp = claudeResult.plate;
       let platesMatch = null;
       let consensusPlate = null;
 
-      if (tp && cp) {
-        platesMatch = tp === cp;
-        // Both agree → use that. They differ → pick higher confidence one
-        consensusPlate = platesMatch ? tp : (tess.confidence >= claudeResult.confidence ? tp : cp);
-      } else if (tp) {
-        consensusPlate = tp;
+      if (lp && cp) {
+        platesMatch = lp === cp;
+        consensusPlate = platesMatch ? lp : (localConf >= claudeResult.confidence ? lp : cp);
+      } else if (lp) {
+        consensusPlate = lp;
       } else if (cp) {
         consensusPlate = cp;
       }
@@ -218,17 +240,18 @@ async function processVideo(sessionId, videoPath, fps = 2) {
         frame_index: frameIndex,
         timestamp_sec: timestampSec,
         frame_path: framePath,
-        tesseract_plate: tp,
-        tesseract_confidence: tess.confidence,
-        tesseract_ocr_raw: tess.ocr_raw,
-        tesseract_notes: tess.notes,
+        // Store local AI results in tesseract columns for DB compatibility
+        tesseract_plate: lp,
+        tesseract_confidence: localConf,
+        tesseract_ocr_raw: JSON.stringify({ vehicles: localResult.vehicles_detected, notes: localResult.notes }),
+        tesseract_notes: localResult.notes,
         claude_plate: cp,
         claude_confidence: claudeResult.confidence,
-        claude_make: claudeResult.make,
+        claude_make: claudeResult.make || localResult.make,
         claude_model: claudeResult.model,
-        claude_color: claudeResult.color,
+        claude_color: claudeResult.color || localResult.color,
         claude_notes: claudeResult.notes,
-        claude_called: callClaude,
+        claude_called: callClaude ? 1 : 0,
         plates_match: platesMatch,
         consensus_plate: consensusPlate,
       });
